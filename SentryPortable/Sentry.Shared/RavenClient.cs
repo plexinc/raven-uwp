@@ -66,7 +66,7 @@ namespace Sentry
 
             _instance = new RavenClient(dsn, captureUnhandled);
 
-            _instance.FlushStoredPayloadsAsync().ContinueWith(t => _instance.HandleInternalException(t.Exception), TaskContinuationOptions.OnlyOnFaulted);
+            _instance.FlushStoredPayloadsAsync().ContinueWith(t => HandleInternalException(t.Exception), TaskContinuationOptions.OnlyOnFaulted);
         }
 
         /// <summary>
@@ -83,7 +83,12 @@ namespace Sentry
                 return _instance;
             }
         }
-        
+
+        public Task FlushAsync()
+        {
+            return _instance.FlushStoredPayloadsAsync().ContinueWith(t => HandleInternalException(t.Exception), TaskContinuationOptions.OnlyOnFaulted);
+        }
+
         private RavenUser _user { get; set; }
         /// <summary>
         /// Instantiates or updates the <see cref="RavenUser"/> to be sent with every Sentry request.
@@ -140,9 +145,16 @@ namespace Sentry
         /// </summary>
         /// <param name="message">The message text to be logged.</param>
         /// <param name="forceSend">Whether to send the request immediately upon capture.</param>
-        public void CaptureMessageAsync(string message, bool forceSend = false)
+        public async Task CaptureMessageAsync(string message, bool forceSend = false)
         {
-            ProcessMessageAsync(message, RavenLogLevel.Info, null, null, forceSend).ContinueWith(t => HandleInternalException(t.Exception), TaskContinuationOptions.OnlyOnFaulted);
+            try
+            {
+                await ProcessMessageAsync(message, RavenLogLevel.Info, null, null, forceSend).ConfigureAwait(false);
+            }
+            catch (Exception e)
+            {
+              HandleInternalException(e);
+            }
         }
 
         /// <summary>
@@ -153,9 +165,16 @@ namespace Sentry
         /// <param name="level">The level this message should be logged at.</param>
         /// <param name="tags">Any additional tags to be sent with this message.</param>
         /// <param name="extra">Any additional extra data to be sent with this message.</param>
-        public void CaptureMessageAsync(string message, bool forceSend = false, RavenLogLevel level = RavenLogLevel.Info, IDictionary<string, string> tags = null, IDictionary<string, object> extra = null)
+        public async Task CaptureMessageAsync(string message, bool forceSend = false, RavenLogLevel level = RavenLogLevel.Info, IDictionary<string, string> tags = null, IDictionary<string, object> extra = null)
         {
-            ProcessMessageAsync(message, level, tags, extra, forceSend).ContinueWith(t => HandleInternalException(t.Exception), TaskContinuationOptions.OnlyOnFaulted);
+            try
+            {
+                await ProcessMessageAsync(message, level, tags, extra, forceSend).ConfigureAwait(false);
+            }
+            catch (Exception e)
+            {
+              HandleInternalException(e);
+            }
         }
 
         /// <summary>
@@ -163,9 +182,16 @@ namespace Sentry
         /// </summary>
         /// <param name="ex">The <see cref="System.Exception"/> to capture.</param>
         /// <param name="forceSend">Whether to send the request immediately upon capture.</param>
-        public void CaptureExceptionAsync(Exception ex, bool forceSend = false)
+        public async Task CaptureExceptionAsync(Exception ex, bool forceSend = false)
         {
-            ProcessExceptionAsync(ex, RavenLogLevel.Error, null, null, forceSend).ContinueWith(t => HandleInternalException(t.Exception), TaskContinuationOptions.OnlyOnFaulted);
+            try
+            {
+                await ProcessExceptionAsync(ex, RavenLogLevel.Error, null, null, forceSend).ConfigureAwait(false);
+            }
+            catch (Exception e)
+            {
+              HandleInternalException(e);
+            }
         }
 
         /// <summary>
@@ -176,9 +202,16 @@ namespace Sentry
         /// <param name="level">The level this exception should be logged at.</param>
         /// <param name="tags">Any additional tags to be sent with this exception.</param>
         /// <param name="extra">Any additional extra data to be sent with this exception.</param>
-        public void CaptureExceptionAsync(Exception ex, bool forceSend = false, RavenLogLevel level = RavenLogLevel.Error, IDictionary<string, string> tags = null, IDictionary<string, object> extra = null)
+        public async Task CaptureExceptionAsync(Exception ex, bool forceSend = false, RavenLogLevel level = RavenLogLevel.Error, IDictionary<string, string> tags = null, IDictionary<string, object> extra = null)
         {
-            ProcessExceptionAsync(ex, level, tags, extra, forceSend).ContinueWith(t => HandleInternalException(t.Exception), TaskContinuationOptions.OnlyOnFaulted);
+            try
+            {
+                await ProcessExceptionAsync(ex, level, tags, extra, forceSend).ConfigureAwait(false);
+            }
+            catch (Exception e)
+            {
+              HandleInternalException(e);
+            }
         }
 
         /// <summary>
@@ -215,9 +248,9 @@ namespace Sentry
             RavenPayload payload = await GeneratePayloadAsync(message, level, tags, extra);
 
             if (forceSend)
-                await SendPayloadAsync(payload);
+                await SendPayloadAsync(payload).ConfigureAwait(false);
             else
-                await StorePayloadAsync(payload);
+                await StorePayloadAsync(payload).ConfigureAwait(false);
         }
 
         internal async Task ProcessExceptionAsync(Exception ex, RavenLogLevel level, IDictionary<string, string> tags, IDictionary<string, object> extra, bool forceSend)
@@ -225,9 +258,9 @@ namespace Sentry
             RavenPayload payload = await GeneratePayloadAsync(ex, level, tags, extra);
 
             if (forceSend)
-                await SendPayloadAsync(payload);
+                await SendPayloadAsync(payload).ConfigureAwait(false);
             else
-                await StorePayloadAsync(payload);
+                await StorePayloadAsync(payload).ConfigureAwait(false);
         }
 
         internal async Task FlushStoredPayloadsAsync()
@@ -244,7 +277,7 @@ namespace Sentry
 
         internal async Task<RavenPayload> GeneratePayloadAsync(string message, RavenLogLevel level, IDictionary<string, string> tags, IDictionary<string, object> extra)
         {
-            RavenPayload payload = await GetBasePayloadAsync(level, tags, extra);
+            RavenPayload payload = await GetBasePayloadAsync(level, tags, extra).ConfigureAwait(false);
             payload.Message = message;
 
             return payload;
@@ -255,7 +288,7 @@ namespace Sentry
             string exceptionName = ex.GetBaseException().GetType().FullName;
             string exceptionMessage = ex.InnerException != null ? ex.InnerException.Message : ex.Message;
 
-            RavenPayload payload = await GetBasePayloadAsync(level, tags, extra);
+            RavenPayload payload = await GetBasePayloadAsync(level, tags, extra).ConfigureAwait(false);
             payload.Message = String.Format("{0}: {1}", exceptionName, exceptionMessage);
             payload.Exceptions = ex.EnumerateAllExceptions().ToList();
             payload.Stacktrace = payload.Exceptions?.LastOrDefault()?.Stacktrace;
@@ -268,7 +301,7 @@ namespace Sentry
 
         private async Task<RavenPayload> GetBasePayloadAsync(RavenLogLevel level, IDictionary<string, string> tags, IDictionary<string, object> extra)
         {
-            RavenPayload payload = new RavenPayload()
+            RavenPayload payload = new RavenPayload
             {
                 EventID = Guid.NewGuid().ToString("n"),
                 Project = Dsn.ProjectID,
@@ -277,7 +310,7 @@ namespace Sentry
                 Platform = _platform.PlatformTag,
                 Logger = String.IsNullOrEmpty(Logger) ? "root" : Logger,
                 User = _user,
-                Tags = await SetDefaultTagsAsync(tags),
+                Tags = await SetDefaultTagsAsync(tags).ConfigureAwait(false),
                 Extra = SetDefaultExtra(extra)
             };
 
@@ -317,7 +350,7 @@ namespace Sentry
 
                 // Store this payload if there's an error sending the exception
                 // e.g. server offline or client has no internet connection
-                await StorePayloadAsync(payload);
+                await StorePayloadAsync(payload).ConfigureAwait(false);
             }
 
             return null;
@@ -332,7 +365,7 @@ namespace Sentry
                 foreach (var defaultTag in DefaultTags.ToList())
                     tags[defaultTag.Key] = defaultTag.Value;
 
-            return await _platform.AppendPlatformTagsAsync(tags);
+            return await _platform.AppendPlatformTagsAsync(tags).ConfigureAwait(false);
         }
 
         private IDictionary<string, object> SetDefaultExtra(IDictionary<string, object> extra = null)
@@ -365,7 +398,7 @@ namespace Sentry
             return client;
         }
 
-        private void HandleInternalException(Exception ex)
+        private static void HandleInternalException(Exception ex)
         {
             System.Diagnostics.Debug.WriteLine(String.Format("[SENTRY] Error: {0}", ex.Message));
         }
