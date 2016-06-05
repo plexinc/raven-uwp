@@ -13,6 +13,9 @@ namespace Sentry.Models
         [JsonProperty("project")]
         public string Project { get; set; }
 
+        [JsonProperty("release")]
+        public string Release { get; set; }
+
         [JsonProperty("level", Required = Required.Always)]
         [JsonConverter(typeof(RavenLogLevelJsonConverter))]
         public RavenLogLevel? Level { get; set; }

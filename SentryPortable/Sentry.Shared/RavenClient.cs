@@ -125,6 +125,12 @@ namespace Sentry
             _user.Email = email;
         }
 
+        private string _release { get; set; }
+        public void SetRelease(string hash)
+        {
+            _release = hash;
+        }
+
         /// <summary>
         /// Gets or sets the logger name to be sent with every Sentry request.
         /// </summary>
@@ -305,6 +311,7 @@ namespace Sentry
             {
                 EventID = Guid.NewGuid().ToString("n"),
                 Project = Dsn.ProjectID,
+                Release = _release,
                 Level = level,
                 Timestamp = DateTime.UtcNow,
                 Platform = _platform.PlatformTag,
