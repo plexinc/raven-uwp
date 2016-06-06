@@ -131,6 +131,12 @@ namespace Sentry
             _release = hash;
         }
 
+        private string _environment { get; set; }
+        public void SetEnvironment(string environment)
+        {
+            _environment = environment;
+        }
+
         /// <summary>
         /// Gets or sets the logger name to be sent with every Sentry request.
         /// </summary>
@@ -318,6 +324,7 @@ namespace Sentry
                 Logger = String.IsNullOrEmpty(Logger) ? "root" : Logger,
                 User = _user,
                 Tags = await SetDefaultTagsAsync(tags).ConfigureAwait(false),
+                Environment = _environment,
                 Extra = SetDefaultExtra(extra)
             };
 

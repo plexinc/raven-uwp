@@ -47,6 +47,9 @@ namespace Sentry.Models
         [JsonProperty("tags", NullValueHandling = NullValueHandling.Ignore)]
         public IDictionary<string, string> Tags { get; set; }
 
+        [JsonProperty("environment")]
+        public string Environment { get; set; }
+
         [JsonProperty("extra", NullValueHandling = NullValueHandling.Ignore)]
         public IDictionary<string, object> Extra { get; set; }
 
