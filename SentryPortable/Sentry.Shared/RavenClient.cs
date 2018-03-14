@@ -155,7 +155,7 @@ namespace Sentry
         {
             try
             {
-                await ProcessMessageAsync(message, RavenLogLevel.Info, null, null, forceSend).ConfigureAwait(false);
+                await ProcessMessageAsync(message, RavenLogLevel.Info, null, null, null, forceSend).ConfigureAwait(false);
             }
             catch (Exception e)
             {
@@ -171,11 +171,12 @@ namespace Sentry
         /// <param name="level">The level this message should be logged at.</param>
         /// <param name="tags">Any additional tags to be sent with this message.</param>
         /// <param name="extra">Any additional extra data to be sent with this message.</param>
-        public async Task CaptureMessageAsync(string message, bool forceSend = false, RavenLogLevel level = RavenLogLevel.Info, IDictionary<string, string> tags = null, IDictionary<string, object> extra = null)
+        /// <param name="fingerprint">Any additional fingerprint to be sent with this message.</param>
+        public async Task CaptureMessageAsync(string message, bool forceSend = false, RavenLogLevel level = RavenLogLevel.Info, IDictionary<string, string> tags = null, IDictionary<string, object> extra = null, string[] fingerprint = null)
         {
             try
             {
-                await ProcessMessageAsync(message, level, tags, extra, forceSend).ConfigureAwait(false);
+                await ProcessMessageAsync(message, level, tags, extra, fingerprint, forceSend).ConfigureAwait(false);
             }
             catch (Exception e)
             {
@@ -249,9 +250,9 @@ namespace Sentry
             CaptureExceptionAsync(e.Exception, true, RavenLogLevel.Error);
         }
 
-        internal async Task ProcessMessageAsync(string message, RavenLogLevel level, IDictionary<string, string> tags, IDictionary<string, object> extra, bool forceSend)
+        internal async Task ProcessMessageAsync(string message, RavenLogLevel level, IDictionary<string, string> tags, IDictionary<string, object> extra, string[] fingerprint, bool forceSend)
         {
-            RavenPayload payload = await GeneratePayloadAsync(message, level, tags, extra);
+            RavenPayload payload = await GeneratePayloadAsync(message, level, tags, extra, fingerprint);
 
             if (forceSend)
                 await SendPayloadAsync(payload).ConfigureAwait(false);
@@ -281,9 +282,9 @@ namespace Sentry
                 await t;
         }
 
-        internal async Task<RavenPayload> GeneratePayloadAsync(string message, RavenLogLevel level, IDictionary<string, string> tags, IDictionary<string, object> extra)
+        internal async Task<RavenPayload> GeneratePayloadAsync(string message, RavenLogLevel level, IDictionary<string, string> tags, IDictionary<string, object> extra, string[] fingerprint)
         {
-            RavenPayload payload = await GetBasePayloadAsync(level, tags, extra).ConfigureAwait(false);
+            RavenPayload payload = await GetBasePayloadAsync(level, tags, extra, fingerprint).ConfigureAwait(false);
             payload.Message = message;
 
             return payload;
@@ -294,7 +295,7 @@ namespace Sentry
             string exceptionName = ex.GetBaseException().GetType().FullName;
             string exceptionMessage = ex.InnerException != null ? ex.InnerException.Message : ex.Message;
 
-            RavenPayload payload = await GetBasePayloadAsync(level, tags, extra).ConfigureAwait(false);
+            RavenPayload payload = await GetBasePayloadAsync(level, tags, extra, null).ConfigureAwait(false);
             payload.Message = String.Format("{0}: {1}", exceptionName, exceptionMessage);
             payload.Exceptions = ex.EnumerateAllExceptions().ToList();
             payload.Stacktrace = payload.Exceptions?.LastOrDefault()?.Stacktrace;
@@ -305,7 +306,7 @@ namespace Sentry
             return payload;
         }
 
-        private async Task<RavenPayload> GetBasePayloadAsync(RavenLogLevel level, IDictionary<string, string> tags, IDictionary<string, object> extra)
+        private async Task<RavenPayload> GetBasePayloadAsync(RavenLogLevel level, IDictionary<string, string> tags, IDictionary<string, object> extra, string[] fingerprint)
         {
             RavenPayload payload = new RavenPayload
             {
@@ -318,7 +319,8 @@ namespace Sentry
                 Logger = String.IsNullOrEmpty(Logger) ? "root" : Logger,
                 User = _user,
                 Tags = await SetDefaultTagsAsync(tags).ConfigureAwait(false),
-                Extra = SetDefaultExtra(extra)
+                Extra = SetDefaultExtra(extra),
+                Fingerprint = fingerprint
             };
 
             return payload;
