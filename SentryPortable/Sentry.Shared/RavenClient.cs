@@ -338,7 +338,7 @@ namespace Sentry
                 string jsonString = JsonConvert.SerializeObject(payload);
                 StringContent content = new StringContent(jsonString, Encoding.UTF8, "application/json");
 
-                System.Diagnostics.Debug.WriteLine("[SENTRY] Sending exception to: " + Dsn.SentryUri);
+                System.Diagnostics.Debug.WriteLine("[SENTRY] Sending payload to: " + Dsn.SentryUri);
                 System.Diagnostics.Debug.WriteLine("[SENTRY] Payload: " + jsonString);
                 
                 var response = await _httpClient.PostAsync(Dsn.SentryUri, content);
@@ -350,6 +350,8 @@ namespace Sentry
                 string resultId = (string)responseJson["id"];
 
                 await _storage.DeleteStoredExceptionAsync(resultId);
+
+                System.Diagnostics.Debug.WriteLine("[SENTRY] resultId: " + resultId);
 
                 return resultId;
             }
@@ -391,15 +393,19 @@ namespace Sentry
 
         private HttpClient BuildHttpClient()
         {
-            string sentryAuthHeader = String.Format(
-                "Sentry sentry_version={0}, sentry_client={1}, sentry_timestamp={2}, sentry_key={3}, sentry_secret={4}",
+            string sentryAuthHeader = string.Format(
+                "Sentry sentry_version={0}, sentry_client={1}, sentry_timestamp={2}, sentry_key={3}",
                 _sentryVersion,
                 _platform.GetPlatformUserAgent(),
                 (long)(DateTime.UtcNow - new DateTime(1970, 1, 1)).TotalSeconds,
-                Dsn.PublicKey,
-                Dsn.PrivateKey
+                Dsn.PublicKey
             );
 
+            if (!string.IsNullOrEmpty(Dsn.PrivateKey))
+            {
+                sentryAuthHeader += ", sentry_secret=" + Dsn.PrivateKey;
+            }
+           
             HttpClient client = new HttpClient();
             client.Timeout = TimeSpan.FromMilliseconds(_defaultTimeout);
             client.DefaultRequestHeaders.Add("X-Sentry-Auth", sentryAuthHeader);
@@ -409,7 +415,7 @@ namespace Sentry
 
         private static void HandleInternalException(Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine(String.Format("[SENTRY] Error: {0}", ex.Message));
+            System.Diagnostics.Debug.WriteLine($"[SENTRY] Error: {ex.Message}");
         }
 
 #endregion
