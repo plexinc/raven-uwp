@@ -136,7 +136,9 @@ namespace Sentry
         /// <returns></returns>
         private static string GetPrivateKey(Uri uri)
         {
-            return uri.UserInfo.Split(':')[1];
+            var spl = uri.UserInfo.Split(':');
+            if (spl.Length > 1) return spl[1];
+            return null;
         }
 
 

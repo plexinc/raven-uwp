@@ -155,7 +155,7 @@ namespace Sentry
         {
             try
             {
-                await ProcessMessageAsync(message, RavenLogLevel.Info, null, null, forceSend).ConfigureAwait(false);
+                await ProcessMessageAsync(message, RavenLogLevel.Info, null, null, null, forceSend).ConfigureAwait(false);
             }
             catch (Exception e)
             {
@@ -171,11 +171,12 @@ namespace Sentry
         /// <param name="level">The level this message should be logged at.</param>
         /// <param name="tags">Any additional tags to be sent with this message.</param>
         /// <param name="extra">Any additional extra data to be sent with this message.</param>
-        public async Task CaptureMessageAsync(string message, bool forceSend = false, RavenLogLevel level = RavenLogLevel.Info, IDictionary<string, string> tags = null, IDictionary<string, object> extra = null)
+        /// <param name="fingerprint">Any additional fingerprint to be sent with this message.</param>
+        public async Task CaptureMessageAsync(string message, bool forceSend = false, RavenLogLevel level = RavenLogLevel.Info, IDictionary<string, string> tags = null, IDictionary<string, object> extra = null, string[] fingerprint = null)
         {
             try
             {
-                await ProcessMessageAsync(message, level, tags, extra, forceSend).ConfigureAwait(false);
+                await ProcessMessageAsync(message, level, tags, extra, fingerprint, forceSend).ConfigureAwait(false);
             }
             catch (Exception e)
             {
@@ -249,9 +250,9 @@ namespace Sentry
             CaptureExceptionAsync(e.Exception, true, RavenLogLevel.Error);
         }
 
-        internal async Task ProcessMessageAsync(string message, RavenLogLevel level, IDictionary<string, string> tags, IDictionary<string, object> extra, bool forceSend)
+        internal async Task ProcessMessageAsync(string message, RavenLogLevel level, IDictionary<string, string> tags, IDictionary<string, object> extra, string[] fingerprint, bool forceSend)
         {
-            RavenPayload payload = await GeneratePayloadAsync(message, level, tags, extra);
+            RavenPayload payload = await GeneratePayloadAsync(message, level, tags, extra, fingerprint);
 
             if (forceSend)
                 await SendPayloadAsync(payload).ConfigureAwait(false);
@@ -281,9 +282,9 @@ namespace Sentry
                 await t;
         }
 
-        internal async Task<RavenPayload> GeneratePayloadAsync(string message, RavenLogLevel level, IDictionary<string, string> tags, IDictionary<string, object> extra)
+        internal async Task<RavenPayload> GeneratePayloadAsync(string message, RavenLogLevel level, IDictionary<string, string> tags, IDictionary<string, object> extra, string[] fingerprint)
         {
-            RavenPayload payload = await GetBasePayloadAsync(level, tags, extra).ConfigureAwait(false);
+            RavenPayload payload = await GetBasePayloadAsync(level, tags, extra, fingerprint).ConfigureAwait(false);
             payload.Message = message;
 
             return payload;
@@ -294,7 +295,7 @@ namespace Sentry
             string exceptionName = ex.GetBaseException().GetType().FullName;
             string exceptionMessage = ex.InnerException != null ? ex.InnerException.Message : ex.Message;
 
-            RavenPayload payload = await GetBasePayloadAsync(level, tags, extra).ConfigureAwait(false);
+            RavenPayload payload = await GetBasePayloadAsync(level, tags, extra, null).ConfigureAwait(false);
             payload.Message = String.Format("{0}: {1}", exceptionName, exceptionMessage);
             payload.Exceptions = ex.EnumerateAllExceptions().ToList();
             payload.Stacktrace = payload.Exceptions?.LastOrDefault()?.Stacktrace;
@@ -305,7 +306,7 @@ namespace Sentry
             return payload;
         }
 
-        private async Task<RavenPayload> GetBasePayloadAsync(RavenLogLevel level, IDictionary<string, string> tags, IDictionary<string, object> extra)
+        private async Task<RavenPayload> GetBasePayloadAsync(RavenLogLevel level, IDictionary<string, string> tags, IDictionary<string, object> extra, string[] fingerprint)
         {
             RavenPayload payload = new RavenPayload
             {
@@ -318,7 +319,8 @@ namespace Sentry
                 Logger = String.IsNullOrEmpty(Logger) ? "root" : Logger,
                 User = _user,
                 Tags = await SetDefaultTagsAsync(tags).ConfigureAwait(false),
-                Extra = SetDefaultExtra(extra)
+                Extra = SetDefaultExtra(extra),
+                Fingerprint = fingerprint
             };
 
             return payload;
@@ -336,7 +338,7 @@ namespace Sentry
                 string jsonString = JsonConvert.SerializeObject(payload);
                 StringContent content = new StringContent(jsonString, Encoding.UTF8, "application/json");
 
-                System.Diagnostics.Debug.WriteLine("[SENTRY] Sending exception to: " + Dsn.SentryUri);
+                System.Diagnostics.Debug.WriteLine("[SENTRY] Sending payload to: " + Dsn.SentryUri);
                 System.Diagnostics.Debug.WriteLine("[SENTRY] Payload: " + jsonString);
                 
                 var response = await _httpClient.PostAsync(Dsn.SentryUri, content);
@@ -348,6 +350,8 @@ namespace Sentry
                 string resultId = (string)responseJson["id"];
 
                 await _storage.DeleteStoredExceptionAsync(resultId);
+
+                System.Diagnostics.Debug.WriteLine("[SENTRY] resultId: " + resultId);
 
                 return resultId;
             }
@@ -389,15 +393,19 @@ namespace Sentry
 
         private HttpClient BuildHttpClient()
         {
-            string sentryAuthHeader = String.Format(
-                "Sentry sentry_version={0}, sentry_client={1}, sentry_timestamp={2}, sentry_key={3}, sentry_secret={4}",
+            string sentryAuthHeader = string.Format(
+                "Sentry sentry_version={0}, sentry_client={1}, sentry_timestamp={2}, sentry_key={3}",
                 _sentryVersion,
                 _platform.GetPlatformUserAgent(),
                 (long)(DateTime.UtcNow - new DateTime(1970, 1, 1)).TotalSeconds,
-                Dsn.PublicKey,
-                Dsn.PrivateKey
+                Dsn.PublicKey
             );
 
+            if (!string.IsNullOrEmpty(Dsn.PrivateKey))
+            {
+                sentryAuthHeader += ", sentry_secret=" + Dsn.PrivateKey;
+            }
+           
             HttpClient client = new HttpClient();
             client.Timeout = TimeSpan.FromMilliseconds(_defaultTimeout);
             client.DefaultRequestHeaders.Add("X-Sentry-Auth", sentryAuthHeader);
@@ -407,7 +415,7 @@ namespace Sentry
 
         private static void HandleInternalException(Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine(String.Format("[SENTRY] Error: {0}", ex.Message));
+            System.Diagnostics.Debug.WriteLine($"[SENTRY] Error: {ex.Message}");
         }
 
 #endregion

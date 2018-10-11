@@ -50,6 +50,10 @@ namespace Sentry.Models
         [JsonProperty("extra", NullValueHandling = NullValueHandling.Ignore)]
         public IDictionary<string, object> Extra { get; set; }
 
+        /// <summary>Gets or sets the fingerprint used for custom grouping</summary>
+        [JsonProperty(NullValueHandling = NullValueHandling.Ignore, PropertyName = "fingerprint")]
+        public string[] Fingerprint { get; set; }
+
         public override int GetHashCode()
         {
             return EventID.GetHashCode();
